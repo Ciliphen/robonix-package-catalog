@@ -139,3 +139,5 @@ robots:
     repo: https://github.com/syswonder/robot-hantewin-benben
   - name: robonix.robot.agilex.ranger_with_piper_mujoco
     repo: https://github.com/syswonder/robot-agilex-ranger_with_piper_mujoco
+  - name: robonix.robot.aubo.i5h
+    repo: https://github.com/syswonder/robot-aubo-i5h
