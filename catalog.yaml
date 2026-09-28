@@ -108,6 +108,8 @@ packages:
     repo: https://github.com/syswonder/primitive-jaka-mini-arm-rbnx
   - name: robonix.skill.jaka
     repo: https://github.com/syswonder/skill-jaka-rbnx
+  - name: robonix.primitive.orbbec.camera
+    repo: https://github.com/syswonder/primitive-orbbec-camera-rbnx
 robots:
   - name: robonix.robot.mirrorme.bpx
     repo: https://github.com/mirrormerobotics/robot-mirrorme-bpx
