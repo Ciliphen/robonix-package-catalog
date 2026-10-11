@@ -1,6 +1,7 @@
 packages:
   - name: robonix.skill.unitree.go2.sport_actions
     repo: https://github.com/syswonder/skill-unitree-go2-sport-actions-rbnx
+    manifest: package_manifest.catalog.yaml
   - name: robonix.primitive.mirrorme.bpx.quadruped
     repo: https://github.com/mirrormerobotics/primitive-mirrorme-bpx-quadruped-rbnx
   - name: robonix.primitive.lynx_chassis
