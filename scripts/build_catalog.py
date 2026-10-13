@@ -1569,7 +1569,7 @@ def render_entry_row(package: dict) -> str:
             inner = f'<span class="entry-shot-empty">{ICON_IMAGE}</span>'
         shot = f'<div class="entry-shot">{inner}</div>'
 
-    return f"""<li data-entry data-name="{html.escape(package['name'])}" data-kind="{html.escape(kind)}" data-units="{unit_count}" data-tags="{html.escape(' '.join(package['tags']))}" data-search="{html.escape(entry_search_text(package))}">
+    return f"""<li data-entry data-name="{html.escape(package['name'])}" data-kind="{html.escape(kind)}" data-units="{unit_count}" data-provides="{0 if is_robot else provided_count(package)}" data-tags="{html.escape(' '.join(package['tags']))}" data-search="{html.escape(entry_search_text(package))}">
             <article class="entry-card k-{html.escape(known)}">
               {shot}
               <div class="entry-card-body">
@@ -1691,6 +1691,7 @@ def render_listing_page(
           <!-- Filled in by site.js. Every row is rendered above, so without
                JavaScript the whole list shows and an empty pager is correct. -->
           <nav class="mt-4" aria-label="Pagination" data-pager hidden>
+            <p class="text-secondary small text-center mb-2" data-page-range></p>
             <ul class="pagination pagination-sm justify-content-center mb-0" data-pager-list></ul>
           </nav>
         </div>

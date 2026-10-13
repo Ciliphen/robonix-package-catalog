@@ -1106,6 +1106,16 @@ class ProvidedGroupsTest(unittest.TestCase):
                 "robonix/skill/explore/explore/status", "robonix/skill/explore/explore/cancel"]
         self.assertEqual(BUILD_CATALOG.provided_count({"kind": "skill", "capabilities": caps}), 1)
 
+    def test_listing_row_carries_the_skill_count(self):
+        """site.js sums data-provides to say "17 packages, 23 skills"."""
+        caps = [f"robonix/skill/unitree_go2_{a}/execute" for a in ("hello", "dance")]
+        row = BUILD_CATALOG.render_entry_row({
+            "name": "robonix.skill.go2", "kind": "skill", "description": "", "license": "MIT",
+            "version": "0.1.0", "repo": "https://github.com/example/go2", "tags": [],
+            "maintainers": [], "capabilities": caps,
+        })
+        self.assertIn('data-provides="2"', row)
+
     def test_only_contracts_of_the_package_kind_count(self):
         """The shared lifecycle driver, or a misspelled prefix, is no
         primitive and no capability."""

@@ -104,6 +104,7 @@
   const clearEl = listing.querySelector("[data-clear]");
   const pagerEl = listing.querySelector("[data-pager]");
   const pagerListEl = listing.querySelector("[data-pager-list]");
+  const rangeEl = listing.querySelector("[data-page-range]");
   const params = new URLSearchParams(window.location.search);
 
   // Every row is already in the DOM, so paging is presentational: without
@@ -217,16 +218,22 @@
 
     const shown = matched.length;
     if (countEl) {
-      if (!shown) countEl.innerHTML = `<b>0</b> ${noun}`;
-      else if (shown <= PAGE_SIZE) {
-        countEl.innerHTML =
-          shown === rows.length
-            ? `<b>${rows.length}</b> ${noun}`
-            : `<b>${shown}</b> of ${rows.length} ${noun}`;
-      } else {
-        const last = Math.min(start + PAGE_SIZE, shown);
-        countEl.innerHTML = `<b>${start + 1}–${last}</b> of ${shown} ${noun}`;
+      // The header counts what matched, never the packages a filter left
+      // out. Filtered to one kind it also says how many skills (services,
+      // primitives) those packages hold: "17 packages, 23 skills". A kind no
+      // row has (a hand-typed ?kind=) matches nothing and names nothing.
+      let provided = "";
+      if (state.kind && state.kind !== "robot" && shown) {
+        const n = matched.reduce((sum, row) => sum + (Number(row.dataset.provides) || 0), 0);
+        provided = `, <b>${n}</b> ${n === 1 ? state.kind : `${state.kind}s`}`;
       }
+      countEl.innerHTML = `<b>${shown}</b> ${noun}${provided}`;
+    }
+    // The header counts the whole match; which slice this page shows is
+    // said beside the page controls.
+    if (rangeEl) {
+      const last = Math.min(start + PAGE_SIZE, shown);
+      rangeEl.textContent = `${start + 1}–${last} of ${shown}`;
     }
     renderPager(state.page, total);
     if (emptyEl) emptyEl.hidden = shown !== 0;
