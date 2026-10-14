@@ -76,7 +76,11 @@ Package object fields:
 | `deployment_status` | string | robot dependency health: `ok` or `warning` |
 | `deployment_warnings` | object[] | robot manifest or dependency warnings with section, name, source, and reason |
 | `readme_url` | string | GitHub README URL for the indexed branch |
-| `preview_image_url` | string | optional robot preview discovered at `assets/robot.jpg`; empty when absent |
+| `catalog_status` | string | `ok`, or `warning` when the entry has `catalog_warnings` |
+| `catalog_warnings` | object[] | indexing problems of an entry already in the catalog, each with `type` and `reason` |
+| `promo_image_urls` | string[] | raw URLs of the promo images in `assets/promo/`, in filename order, at most 10 |
+| `icon_url` | string | raw URL of `assets/icon.*`; empty when absent |
+| `preview_image_url` | string | the first promo image URL, kept for compatibility; empty when there is none |
 
 ### JavaScript
 
@@ -184,12 +188,6 @@ catalog:
     - wheatfox <wheatfox17@icloud.com>
 ```
 
-A robot deployment repository may add `assets/robot.jpg`. When present,
-the catalog exposes its raw URL as `preview_image_url`, then generates
-380 px and 720 px WebP previews for responsive robot list cards. Repositories
-without the file keep
-the same metadata and layout without an image placeholder.
-
 The builder also parses `primitive:`, `service:`, and `skill:` entries from
 `robonix_manifest.yaml` into `deploy_dependencies[]`, linking dependencies
 back to cataloged ordinary packages when their repository is known. Each
@@ -207,6 +205,35 @@ resolved directory must exist and contain the selected package manifest
 accepted when no override is selected). `${ROBONIX_DEPLOY_DIR}` resolves
 to the robot repository root, while `${ROBONIX_SOURCE_PATH}` resolves to
 the default branch of `https://github.com/syswonder/robonix`.
+
+## Promo images
+
+Every package and robot repository can show images in the catalog, the way an
+App Store listing shows screenshots:
+
+```
+assets/
+├── promo/          1–10 images, in filename order: 01.png, 02.jpg, ...
+│   ├── 01.png      the list card shows this one
+│   └── ...
+└── icon.svg        optional square icon, shown beside the title on the package page
+```
+
+Promo images may be PNG, JPEG or WebP; the icon may be `icon.svg`,
+`icon.png`, `icon.webp` or `icon.jpg`. A 16:9 image of at least 1280×720 is
+recommended. The list card crops the first image to 4:3 from the center, and
+the package page shows all of them in a gallery that links to the full-size
+files. The builder generates 380 px and 720 px WebP card previews from the
+first image and a 1280 px wide WebP copy of each one; an image that cannot be
+fetched is linked as is.
+
+Promo images are optional for primitive, service and skill packages. A robot
+deployment must have at least one: a new or changed robot entry without one
+fails CI, and a robot already in the catalog shows the problem on its own page.
+
+`assets/robot.jpg` is deprecated. It is still read for compatibility: when
+`assets/promo/` has no images, a robot's `assets/robot.jpg` is its only promo
+image and meets the requirement. New repositories should use `assets/promo/`.
 
 ## Building the site
 

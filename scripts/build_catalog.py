@@ -45,6 +45,10 @@ VENDOR_ASSETS = Path("assets/vendor")
 LEGACY_MISSING_LICENSE = {"robonix.robot.wheeltec.r550"}
 PREVIEW_SIZES = ((380, 285), (720, 540))
 PREVIEW_WEBP_QUALITY = 76
+GALLERY_WIDTH = 1280
+PROMO_LIMIT = 10
+PROMO_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+ICON_NAMES = ("icon.svg", "icon.png", "icon.webp", "icon.jpg")
 # Indexing is almost entirely GitHub round trips, so entries are fetched
 # concurrently. Kept well under GitHub's concurrent-request guidance, which
 # asks callers to avoid bursts that trip the secondary rate limit.
@@ -126,37 +130,45 @@ def download_bytes(url: str) -> bytes:
         return response.read()
 
 
-def prepare_preview_images(public_dir: Path, packages: list[dict]) -> None:
+def save_webp(image: Image.Image, path: Path) -> None:
+    image.save(path, "WEBP", quality=PREVIEW_WEBP_QUALITY, method=6, optimize=True)
+
+
+def prepare_promo_images(public_dir: Path, packages: list[dict]) -> None:
+    """Card previews from the first promo image, a gallery copy of every one.
+
+    The card previews are center-cropped to 4:3; the gallery copy keeps the
+    aspect ratio and is never upscaled. An image that cannot be fetched or
+    decoded is left to its raw URL.
+    """
     preview_dir = public_dir / "assets" / "previews"
     for package in packages:
-        source_url = package.get("preview_image_url")
-        if not source_url:
-            continue
-        try:
-            source_bytes = download_bytes(source_url)
-            with Image.open(io.BytesIO(source_bytes)) as source:
-                source = ImageOps.exif_transpose(source).convert("RGB")
-                preview_dir.mkdir(parents=True, exist_ok=True)
-                for width, height in PREVIEW_SIZES:
-                    preview = ImageOps.fit(
-                        source,
-                        (width, height),
-                        method=Image.Resampling.LANCZOS,
-                    )
-                    asset = f"assets/previews/{package_slug(package['name'])}-{width}.webp"
-                    preview.save(
-                        public_dir / asset,
-                        "WEBP",
-                        quality=PREVIEW_WEBP_QUALITY,
-                        method=6,
-                        optimize=True,
-                    )
-                    package[f"_preview_image_{width}"] = asset
-        except (OSError, UnidentifiedImageError, urllib.error.URLError) as error:
-            print(
-                f"warning: {package['name']}: could not optimize preview image: {error}",
-                file=sys.stderr,
-            )
+        slug = package_slug(package["name"])
+        gallery = package["_gallery_images"] = {}
+        for index, source_url in enumerate(package.get("promo_image_urls", []), 1):
+            try:
+                source_bytes = download_bytes(source_url)
+                with Image.open(io.BytesIO(source_bytes)) as source:
+                    source = ImageOps.exif_transpose(source).convert("RGB")
+                    preview_dir.mkdir(parents=True, exist_ok=True)
+                    if index == 1:
+                        for width, height in PREVIEW_SIZES:
+                            asset = f"assets/previews/{slug}-{width}.webp"
+                            save_webp(
+                                ImageOps.fit(source, (width, height), method=Image.Resampling.LANCZOS),
+                                public_dir / asset,
+                            )
+                            package[f"_preview_image_{width}"] = asset
+                    source.thumbnail((GALLERY_WIDTH, source.height), Image.Resampling.LANCZOS)
+                    asset = f"assets/previews/{slug}-{index}-{GALLERY_WIDTH}.webp"
+                    save_webp(source, public_dir / asset)
+                    gallery[source_url] = (asset, source.width, source.height)
+            except (OSError, UnidentifiedImageError, Image.DecompressionBombError,
+                    urllib.error.URLError) as error:
+                print(
+                    f"warning: {package['name']}: could not optimize promo image {source_url}: {error}",
+                    file=sys.stderr,
+                )
 
 
 def parse_repo(url: str) -> tuple[str, str]:
@@ -263,6 +275,41 @@ def load_remote_submodule(
     if not match:
         return None
     return f"https://github.com/{match.group(1)}/{match.group(2)}", sha
+
+
+def load_remote_images(repo_url: str, branch: str, *, robot: bool) -> tuple[list[str], str]:
+    """Raw URLs of a repository's promo images, in filename order, and its icon.
+
+    assets/promo/ holds up to PROMO_LIMIT images, the first shown on list
+    cards; assets/icon.* is an optional square icon. assets/robot.jpg is
+    deprecated: kept for compatibility, it stands in for a robot whose
+    assets/promo/ has no images. assets/ is listed once, and assets/promo/
+    only when it exists.
+    """
+    owner, repo = parse_repo(repo_url)
+    ref = urllib.parse.quote(branch, safe="")
+
+    def files(path: str) -> dict[str, dict]:
+        payload = github_optional_json(
+            f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
+        )
+        if not isinstance(payload, list):
+            return {}
+        return {e["name"]: e for e in payload if isinstance(e, dict) and isinstance(e.get("name"), str)}
+
+    def url(entry: dict | None) -> str:
+        return (entry.get("download_url") or "") if entry and entry.get("type") == "file" else ""
+
+    assets = files("assets")
+    promo = []
+    if assets.get("promo", {}).get("type") == "dir":
+        listed = files("assets/promo")
+        names = sorted(n for n in listed if n.lower().endswith(PROMO_EXTENSIONS))
+        promo = [u for u in map(url, (listed[n] for n in names)) if u][:PROMO_LIMIT]
+    if not promo and robot and url(assets.get("robot.jpg")):
+        promo = [url(assets["robot.jpg"])]
+    icon = next((url(assets[n]) for n in ICON_NAMES if url(assets.get(n))), "")
+    return promo, icon
 
 
 def package_slug(name: str) -> str:
@@ -1089,14 +1136,7 @@ def collect_entry(
                 ),
             }
         )
-    preview_image_url = ""
-    if catalog_type == "robot":
-        owner, parsed_repo = parse_repo(repo)
-        preview = github_optional_json(
-            f"https://api.github.com/repos/{owner}/{parsed_repo}/contents/assets/robot.jpg?ref={urllib.parse.quote(branch, safe='')}"
-        )
-        if preview and preview.get("type") == "file":
-            preview_image_url = preview.get("download_url") or ""
+    promo_image_urls, icon_url = load_remote_images(repo, branch, robot=catalog_type == "robot")
     if catalog_type == "robot":
         cap_names = []
         if cached is None:
@@ -1155,7 +1195,14 @@ def collect_entry(
         cap_names = collect_capabilities(name, manifest)
         deploy_dependencies = []
     kind = name.split(".")[1] if name.startswith("robonix.") and "." in name else ""
-    if catalog_type != "robot":
+    problems = []
+    if catalog_type == "robot":
+        if not promo_image_urls:
+            problems.append({
+                "type": "missing_promo_image",
+                "reason": "no promo image; add one or more images under assets/promo/ (01.png, 02.jpg, ...)",
+            })
+    else:
         root_caps = None
         if manifest_path != "package_manifest.yaml" and cached is None:
             owner, _ = parse_repo(repo)
@@ -1169,12 +1216,12 @@ def collect_entry(
         problems = layout_problems(kind, cap_names, root_caps, manifest_path)
         if kind in KINDS:
             problems += contract_problems(repo, branch, manifest, manifest_path)
-        for problem in problems:
-            # A new or changed entry has to fix this before it is merged; an
-            # entry already in the catalog is listed with a warning.
-            if not allow_name_mismatch:
-                fail(f"{name}: {problem['reason']}")
-            catalog_warnings.append(problem)
+    for problem in problems:
+        # A new or changed entry has to fix this before it is merged; an
+        # entry already in the catalog is listed with a warning.
+        if not allow_name_mismatch:
+            fail(f"{name}: {problem['reason']}")
+        catalog_warnings.append(problem)
     return {
         "name": name,
         "version": version,
@@ -1194,7 +1241,9 @@ def collect_entry(
         "provides": group_capabilities(kind, cap_names),
         "deploy_dependencies": deploy_dependencies,
         "readme_url": f"{repo}/blob/{branch}/README.md",
-        "preview_image_url": preview_image_url,
+        "promo_image_urls": promo_image_urls,
+        "icon_url": icon_url,
+        "preview_image_url": promo_image_urls[0] if promo_image_urls else "",
         "_readme_markdown": readme,
         "_source_warnings": source_warnings,
     }
@@ -1532,7 +1581,7 @@ def warning_entries(package: dict) -> list[str]:
 
 
 def preview_sources(package: dict, root: str) -> tuple[str, str]:
-    """Return (src, srcset) for a robot preview, or ("", "") when it has none."""
+    """Return (src, srcset) for a card preview, or ("", "") when there is none."""
     if package.get("_preview_image_380"):
         small = f"{root}{package['_preview_image_380']}"
         large = f"{root}{package['_preview_image_720']}"
@@ -1546,8 +1595,8 @@ def render_entry_row(package: dict) -> str:
     """One card in a listing.
 
     Compact on purpose: an icon tile carrying the kind's colour, the name, two
-    clamped lines of description, and a single metadata line. A robot leads
-    with its photograph instead, the way an application listing would.
+    clamped lines of description, and a single metadata line. An entry with
+    promo images leads with the first, the way an application listing would.
     Indexing issues are shown on the entry's own page, not here.
     """
     slug = html.escape(package_slug(package["name"]))
@@ -1557,17 +1606,15 @@ def render_entry_row(package: dict) -> str:
     is_robot = package.get("catalog_type") == "robot"
 
     shot = ""
-    if is_robot:
-        src, srcset = preview_sources(package, "../")
-        if src:
-            srcset_attr = f' srcset="{srcset}" sizes="(max-width: 768px) 100vw, 380px"' if srcset else ""
-            inner = (
-                f'<img src="{src}"{srcset_attr} alt="" width="380" height="285" '
-                f'loading="lazy" decoding="async">'
-            )
-        else:
-            inner = f'<span class="entry-shot-empty">{ICON_IMAGE}</span>'
-        shot = f'<div class="entry-shot">{inner}</div>'
+    src, srcset = preview_sources(package, "../")
+    if src:
+        srcset_attr = f' srcset="{srcset}" sizes="(max-width: 768px) 100vw, 380px"' if srcset else ""
+        shot = (
+            f'<div class="entry-shot"><img src="{src}"{srcset_attr} alt="" width="380" height="285" '
+            f'loading="lazy" decoding="async"></div>'
+        )
+    elif is_robot:
+        shot = f'<div class="entry-shot"><span class="entry-shot-empty">{ICON_IMAGE}</span></div>'
 
     return f"""<li data-entry data-name="{html.escape(package['name'])}" data-kind="{html.escape(kind)}" data-units="{unit_count}" data-provides="{0 if is_robot else provided_count(package)}" data-tags="{html.escape(' '.join(package['tags']))}" data-search="{html.escape(entry_search_text(package))}">
             <article class="entry-card k-{html.escape(known)}">
@@ -2158,7 +2205,7 @@ def render_site(public_dir: Path, generated_at: str, packages: list[dict]) -> No
     robot_entries = [p for p in packages if p.get("catalog_type") == "robot"]
     public_dir.mkdir(parents=True, exist_ok=True)
     copy_assets(public_dir)
-    prepare_preview_images(public_dir, packages)
+    prepare_promo_images(public_dir, packages)
     render_listing_page(
         public_dir,
         generated_at,
@@ -2325,6 +2372,24 @@ def render_dependency_items(package: dict) -> str:
     return "".join(items)
 
 
+def render_promo_gallery(package: dict, root: str) -> str:
+    """A row of the promo images that scrolls sideways, each a link to the
+    full-size image, so it works by touch, mouse and Tab with no script."""
+    urls = package.get("promo_image_urls", [])
+    items = []
+    for index, url in enumerate(urls, 1):
+        asset = package.get("_gallery_images", {}).get(url)
+        src = html.escape(f"{root}{asset[0]}" if asset else url)
+        size = f' width="{asset[1]}" height="{asset[2]}"' if asset else ""
+        loading = "" if index == 1 else ' loading="lazy"'
+        alt = html.escape(f"{package['name']} image {index} of {len(urls)}")
+        items.append(
+            f'<li><a href="{html.escape(url)}"><img src="{src}" alt="{alt}"{size}{loading} '
+            f'decoding="async"></a></li>'
+        )
+    return f'<ul class="promo-gallery" aria-label="Images">{"".join(items)}</ul>' if items else ""
+
+
 def render_package_pages(public_dir: Path, generated_at: str, packages: list[dict]) -> None:
     """Write one detail page per catalog entry.
 
@@ -2388,14 +2453,12 @@ def render_package_pages(public_dir: Path, generated_at: str, packages: list[dic
             else f'<p class="text-secondary small mb-0">{empty_note}</p>'
         )
 
-        src, srcset = preview_sources(p, "../../")
-        shot = ""
-        if src:
-            srcset_attr = f' srcset="{srcset}" sizes="360px"' if srcset else ""
-            shot = (
-                f'<div class="robot-shot"><img src="{src}"{srcset_attr} alt="" '
-                f'width="380" height="285" decoding="async"></div>'
-            )
+        gallery = render_promo_gallery(p, "../../")
+        icon = (
+            f'<img class="detail-icon" src="{html.escape(p["icon_url"])}" alt="" width="40" height="40">'
+            if p.get("icon_url")
+            else ""
+        )
 
         tags_block = (
             f'<div class="card p-3"><h2 class="aside-title mb-2">Tags</h2>'
@@ -2419,6 +2482,7 @@ def render_package_pages(public_dir: Path, generated_at: str, packages: list[dic
       </nav>
       <header class="pt-3 pb-4 border-bottom">
         <div class="d-flex flex-wrap align-items-center gap-2">
+          {icon}
           <h1 class="detail-name mb-0">{wrappable_name(p['name'])}</h1>
           {kind_chip(p['kind'])}
           <span class="chip chip-plain">v{html.escape(p['version'])}</span>
@@ -2433,6 +2497,7 @@ def render_package_pages(public_dir: Path, generated_at: str, packages: list[dic
       </header>
       <div class="row g-4 mt-0">
         <div class="col-lg-8">
+          {gallery}
           <div class="card overflow-hidden">
             <div class="readme-head d-flex align-items-center justify-content-between gap-3 px-4 py-2 border-bottom">
               <span>README</span>
@@ -2446,7 +2511,6 @@ def render_package_pages(public_dir: Path, generated_at: str, packages: list[dic
         <aside class="col-lg-4">
           <div class="detail-aside d-flex flex-column gap-3">
             <div class="card overflow-hidden">
-              {shot}
               <div class="p-3">
                 <h2 class="aside-title mb-3">Entry</h2>
                 <dl class="kv mb-0">

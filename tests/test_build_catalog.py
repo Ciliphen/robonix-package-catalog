@@ -146,19 +146,20 @@ class RobotListingTests(unittest.TestCase):
         self.assertIn('class="entry-card k-robot"', rendered)
         self.assertIn('class="kind-tile"', rendered)
 
-    def test_robot_preview_is_resized_to_responsive_webp_assets(self):
+    def test_promo_images_are_resized_to_responsive_webp_assets(self):
         image_buffer = io.BytesIO()
         Image.new("RGB", (1600, 900), (39, 54, 137)).save(image_buffer, "JPEG", quality=95)
-        package = {
-            "name": "robonix.robot.example",
-            "preview_image_url": "https://raw.githubusercontent.com/syswonder/example/main/assets/robot.jpg",
-        }
+        urls = [
+            "https://raw.githubusercontent.com/syswonder/example/main/assets/promo/01.jpg",
+            "https://raw.githubusercontent.com/syswonder/example/main/assets/promo/02.jpg",
+        ]
+        package = {"name": "robonix.robot.example", "promo_image_urls": urls}
 
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
             BUILD_CATALOG, "download_bytes", return_value=image_buffer.getvalue()
         ):
             public = Path(tmp)
-            BUILD_CATALOG.prepare_preview_images(public, [package])
+            BUILD_CATALOG.prepare_promo_images(public, [package])
             small = public / package["_preview_image_380"]
             large = public / package["_preview_image_720"]
 
@@ -169,6 +170,27 @@ class RobotListingTests(unittest.TestCase):
                 self.assertEqual(preview.size, (380, 285))
             with Image.open(large) as preview:
                 self.assertEqual(preview.size, (720, 540))
+            # Every promo image gets a gallery copy, aspect ratio kept.
+            for url in urls:
+                asset, width, height = package["_gallery_images"][url]
+                self.assertEqual((width, height), (1280, 720))
+                with Image.open(public / asset) as gallery:
+                    self.assertEqual(gallery.size, (1280, 720))
+
+    def test_promo_image_download_failure_only_warns(self):
+        url = "https://raw.githubusercontent.com/syswonder/example/main/assets/promo/01.png"
+        package = {"name": "robonix.skill.example", "promo_image_urls": [url]}
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            BUILD_CATALOG, "download_bytes",
+            side_effect=BUILD_CATALOG.urllib.error.URLError("offline"),
+        ), mock.patch.object(BUILD_CATALOG.sys, "stderr", stderr):
+            BUILD_CATALOG.prepare_promo_images(Path(tmp), [package])
+
+        self.assertIn("could not optimize promo image", stderr.getvalue())
+        self.assertNotIn("_preview_image_380", package)
+        # The gallery falls back to the raw image.
+        self.assertIn(f'src="{url}"', BUILD_CATALOG.render_promo_gallery(package, "../../"))
 
     def test_listing_page_has_filters_and_only_local_assets(self):
         package = {
@@ -869,8 +891,8 @@ class DeploymentDependencyWarningTests(unittest.TestCase):
             ),
         ), mock.patch.object(
             BUILD_CATALOG,
-            "github_optional_json",
-            return_value=None,
+            "load_remote_images",
+            return_value=(["https://raw.githubusercontent.com/syswonder/example-robot/main/assets/promo/01.png"], ""),
         ), mock.patch.object(
             BUILD_CATALOG.urllib.request, "urlopen", return_value=published(cached)
         ) as urlopen:
@@ -1196,3 +1218,105 @@ class ContractProblemsTest(unittest.TestCase):
         self.assertIn("IDL x/srv/B.srv", reasons[1])
         self.assertIn("no contract defines robonix/skill/x/c", reasons[2])
         self.assertIn("does not exist", reasons[3])
+
+
+class PromoImagesTest(unittest.TestCase):
+    REPO = "https://github.com/example/robot-example"
+    RAW = "https://raw.githubusercontent.com/example/robot-example/main/"
+
+    def listing(self, *names, kind="file", base="assets/"):
+        return [{"name": n, "type": "dir" if n == "promo" else kind,
+                 "download_url": None if n == "promo" else self.RAW + base + n} for n in names]
+
+    def images(self, assets, promo=None, *, robot=True):
+        def fetch(url, optional):
+            self.assertTrue(optional)
+            if "/contents/assets/promo?" in url:
+                return promo
+            self.assertIn("/contents/assets?ref=main", url)
+            return assets
+
+        with mock.patch.object(BUILD_CATALOG, "github_fetch", side_effect=fetch) as fetched:
+            result = BUILD_CATALOG.load_remote_images(self.REPO, "main", robot=robot)
+        return result, fetched.call_count
+
+    def test_promo_images_in_filename_order_capped_at_ten(self):
+        names = [f"{i:02d}.{ext}" for i, ext in zip(range(12, 0, -1), ["png", "jpg", "JPEG", "webp"] * 3)]
+        promo = self.listing(*names, "notes.txt", base="assets/promo/")
+        promo.append({"name": "raw", "type": "dir", "download_url": None})
+        (urls, icon), calls = self.images(
+            self.listing("promo", "icon.png", "icon.svg", "robot.jpg"), promo)
+
+        self.assertEqual(calls, 2)
+        self.assertEqual([u.rsplit("/", 1)[1] for u in urls], sorted(names)[:10])
+        self.assertEqual(urls[0], self.RAW + "assets/promo/01.webp")
+        # robot.jpg only stands in when assets/promo/ has no images.
+        self.assertNotIn(self.RAW + "assets/robot.jpg", urls)
+        self.assertEqual(icon, self.RAW + "assets/icon.svg")
+
+    def test_legacy_robot_jpg_is_the_robot_fallback(self):
+        (urls, icon), calls = self.images(self.listing("robot.jpg"))
+        self.assertEqual(calls, 1)
+        self.assertEqual(urls, [self.RAW + "assets/robot.jpg"])
+        self.assertEqual(icon, "")
+        (urls, _), _ = self.images(self.listing("promo", "robot.jpg"), self.listing("README.md"))
+        self.assertEqual(urls, [self.RAW + "assets/robot.jpg"])
+        (urls, _), _ = self.images(self.listing("robot.jpg"), robot=False)
+        self.assertEqual(urls, [])
+        # No assets/ directory at all is one 404 and no images.
+        self.assertEqual(self.images(None), (([], ""), 1))
+
+    def collect_robot(self, baseline: bool) -> list[dict]:
+        entry = {"name": "robonix.robot.example", "repo": self.REPO,
+                 "_catalog_type": "robot", "manifest": "robonix_manifest.yaml"}
+        manifest = {"catalog": {
+            "name": "robonix.robot.example", "version": "0.1.0", "description": "Example robot",
+            "license": "Apache-2.0", "tags": ["robot"], "maintainers": ["Example <example@example.com>"],
+        }}
+        baseline_keys = {BUILD_CATALOG.catalog_entry_key(entry)} if baseline else set()
+        with mock.patch.object(BUILD_CATALOG, "read_catalog", return_value=[entry]), \
+                mock.patch.object(BUILD_CATALOG, "load_remote_manifest", return_value=("main", manifest, "")), \
+                mock.patch.object(BUILD_CATALOG, "load_remote_images", return_value=([], "")):
+            return BUILD_CATALOG.collect(Path("catalog.yaml"), baseline_keys)
+
+    def test_robot_without_promo_image_fails_new_entries_and_warns_on_its_page(self):
+        with self.assertRaises(SystemExit):
+            self.collect_robot(baseline=False)
+        robot = self.collect_robot(baseline=True)[0]
+        self.assertEqual(robot["catalog_status"], "warning")
+        self.assertEqual([w["type"] for w in robot["catalog_warnings"]], ["missing_promo_image"])
+        self.assertEqual((robot["promo_image_urls"], robot["icon_url"], robot["preview_image_url"]), ([], "", ""))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            public = Path(tmp)
+            BUILD_CATALOG.render_listing_page(public, "2026-10-14T00:00:00+00:00", [robot], page="robots",
+                                              title="Robot deployments", lede="", noun="robot deployments")
+            BUILD_CATALOG.render_package_pages(public, "2026-10-14T00:00:00+00:00", [robot])
+            listing = (public / "robots" / "index.html").read_text()
+            detail = (public / "robots" / "robonix.robot.example" / "index.html").read_text()
+
+        self.assertNotIn("no promo image", listing)
+        self.assertIn("no promo image", detail)
+        self.assertNotIn("promo-gallery", detail)
+
+    def test_card_shows_the_first_promo_image_only_when_there_is_one(self):
+        package = {
+            "name": "robonix.skill.example", "kind": "skill", "description": "", "license": "MIT",
+            "version": "0.1.0", "repo": "https://github.com/example/skill-example", "tags": [],
+            "maintainers": [], "capabilities": [], "promo_image_urls": [], "preview_image_url": "",
+        }
+        self.assertNotIn("entry-shot", BUILD_CATALOG.render_entry_row(package))
+
+        urls = [self.RAW + "assets/promo/01.png", self.RAW + "assets/promo/02.png"]
+        package.update(promo_image_urls=urls, preview_image_url=urls[0],
+                       _preview_image_380="assets/previews/robonix.skill.example-380.webp",
+                       _preview_image_720="assets/previews/robonix.skill.example-720.webp",
+                       _gallery_images={urls[0]: ("assets/previews/robonix.skill.example-1-1280.webp", 1280, 720)})
+        row = BUILD_CATALOG.render_entry_row(package)
+        self.assertIn('<div class="entry-shot"><img src="../assets/previews/robonix.skill.example-380.webp"', row)
+
+        gallery = BUILD_CATALOG.render_promo_gallery(package, "../../")
+        self.assertEqual(gallery.count("<li>"), 2)
+        self.assertIn(f'<a href="{urls[0]}"><img src="../../assets/previews/robonix.skill.example-1-1280.webp"', gallery)
+        self.assertIn('width="1280" height="720"', gallery)
+        self.assertIn(f'<a href="{urls[1]}"><img src="{urls[1]}"', gallery)
