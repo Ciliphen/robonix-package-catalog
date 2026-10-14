@@ -719,7 +719,7 @@ html[data-prefilter-kind="robot"] [data-entry]:not([data-kind="robot"]) { displa
 .entry-meta .m-kind { color: var(--k); }
 .entry-meta .m-kind svg { opacity: 1; }
 
-/* Robots keep a small photograph at the left of the row. */
+/* An entry with promo images keeps the first, small, at the left of the row. */
 .entry-shot {
   float: left;
   width: 96px;
@@ -824,6 +824,31 @@ html[data-prefilter-kind="robot"] [data-entry]:not([data-kind="robot"]) { displa
   overflow-wrap: anywhere;
 }
 .detail-desc { color: var(--bs-secondary-color); font-size: 0.95rem; max-width: 78ch; }
+.detail-icon { flex: none; width: 40px; height: 40px; border-radius: var(--bs-border-radius); object-fit: contain; }
+
+/* Promo images, App Store style: one row that scrolls sideways, each image
+ * at a fixed height and its own aspect ratio, linked to the full size. */
+.promo-gallery {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+  padding: 3px 3px 0.5rem;
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+}
+.promo-gallery li { flex: none; scroll-snap-align: start; }
+.promo-gallery a {
+  display: block;
+  overflow: hidden;
+  background: var(--bs-secondary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+}
+.promo-gallery a:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.promo-gallery img { display: block; width: auto; height: 260px; max-width: 85vw; object-fit: cover; }
+@media (max-width: 575.98px) { .promo-gallery img { height: 190px; } }
 
 .readme-head {
   font-size: 0.875rem;
