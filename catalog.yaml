@@ -108,8 +108,8 @@ packages:
     repo: https://github.com/1020559180/service-fire-detect-rbnx
   - name: robonix.primitive.jaka.arm
     repo: https://github.com/syswonder/primitive-jaka-mini-arm-rbnx
-  - name: robonix.skill.jaka
-    repo: https://github.com/syswonder/skill-jaka-rbnx
+  - name: robonix.skill.grasp
+    repo: https://github.com/syswonder/skill-jaka-grasp-rbnx
   - name: robonix.primitive.orbbec.camera
     repo: https://github.com/syswonder/primitive-orbbec-camera-rbnx
   - name: robonix.primitive.linkerhand.o6.hand
