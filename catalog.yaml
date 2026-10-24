@@ -79,6 +79,10 @@ packages:
     repo: https://github.com/QingFeng34048/Robonix-Skill-Sim2Real-Completed
   - name: robonix.skill.find_object
     repo: https://github.com/syswonder/skill-find-object-rbnx
+  - name: robonix.skill.room_check
+    repo: https://github.com/syswonder/skill-room-check-rbnx
+  - name: robonix.skill.find_item
+    repo: https://github.com/syswonder/skill-find-item-rbnx
   - name: robonix.primitive.beingbeyond.d1.arm
     repo: https://github.com/syswonder/primitive-beingbeyond-d1-arm-rbnx
   - name: robonix.primitive.beingbeyond.d1.hand
