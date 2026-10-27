@@ -1,4 +1,22 @@
 packages:
+  - name: robonix.service.memgraph
+    repo: https://github.com/syswonder/robonix
+    path: services/memory
+  - name: robonix.service.memsearch
+    repo: https://github.com/syswonder/robonix
+    path: services/memsearch
+  - name: robonix.service.speech
+    repo: https://github.com/syswonder/robonix
+    path: services/speech
+  - name: robonix.service.voiceprint
+    repo: https://github.com/syswonder/robonix
+    path: services/voiceprint
+  - name: robonix.service.scene_verifier
+    repo: https://github.com/syswonder/robonix
+    path: services/verifiers/scene_verifier
+  - name: robonix.service.vlm_verifier
+    repo: https://github.com/syswonder/robonix
+    path: services/verifiers/vlm_verifier
   - name: robonix.skill.unitree.go2.sport_actions
     repo: https://github.com/syswonder/skill-unitree-go2-sport-actions-rbnx
   - name: robonix.primitive.mirrorme.bpx.quadruped
@@ -79,6 +97,10 @@ packages:
     repo: https://github.com/QingFeng34048/Robonix-Skill-Sim2Real-Completed
   - name: robonix.skill.find_object
     repo: https://github.com/syswonder/skill-find-object-rbnx
+  - name: robonix.skill.room_check
+    repo: https://github.com/syswonder/skill-room-check-rbnx
+  - name: robonix.skill.find_item
+    repo: https://github.com/syswonder/skill-find-item-rbnx
   - name: robonix.primitive.beingbeyond.d1.arm
     repo: https://github.com/syswonder/primitive-beingbeyond-d1-arm-rbnx
   - name: robonix.primitive.beingbeyond.d1.hand
@@ -120,6 +142,10 @@ packages:
     repo: https://github.com/syswonder/primitive-agilex-piper_with_linkerhand-description-rbnx
   - name: robonix.skill.pick.flat_grasp
     repo: https://github.com/syswonder/skill-pick-flat-grasp-rbnx
+  - name: robonix.primitive.deep_robotics.lynx_s10.camera
+    repo: https://github.com/syswonder/primitive-deep_robotics-lynx_s10-camera-rbnx
+  - name: robonix.primitive.deep_robotics.lynx_s10.lidar
+    repo: https://github.com/syswonder/primitive-deep_robotics-lynx_s10-lidar-rbnx
 robots:
   - name: robonix.robot.mirrorme.bpx
     repo: https://github.com/mirrormerobotics/robot-mirrorme-bpx

@@ -23,6 +23,22 @@ entry to the correct section in `catalog.yaml`. That is the whole submission:
 everything else on the website is derived from the manifest in your own
 repository.
 
+Use optional `path:` for packages kept in a directory of a larger repository,
+such as the services that ship with Robonix:
+
+```yaml
+packages:
+  - name: robonix.service.memsearch
+    repo: https://github.com/syswonder/robonix
+    path: services/memsearch
+```
+
+The path has no leading or trailing slash. The manifest (including a `manifest:`
+override), README, artwork, and package-defined contracts are read relative to
+that directory. Several packages can share a repository with different paths;
+each name and `(repo, path)` pair must be unique. Robot entries stay at the
+repository root.
+
 ## Website
 
 - Homepage: https://packages.robonix.ai/
@@ -66,12 +82,14 @@ Package object fields:
 | `tags` | string[] | UI/search tags |
 | `maintainers` | string[] | maintainers in `Name <email@domain>` format |
 | `repo` | string | GitHub repository URL |
+| `path` | string, optional | package directory inside the repository; omitted for packages at the root |
 | `repo_name` | string | repository name without owner |
 | `default_branch` | string | package repository default branch used for indexing |
 | `kind` | string | `primitive`, `service`, `skill`, or `robot` inferred from catalog name |
 | `catalog_type` | string | `package` for ordinary packages, `robot` for whole-robot deployments |
-| `manifest` | string | source manifest path, usually `package_manifest.yaml` or `robonix_manifest.yaml` |
+| `manifest` | string | source manifest path relative to the package directory, usually `package_manifest.yaml` or `robonix_manifest.yaml` |
 | `capabilities` | string[] | declared Robonix contract IDs |
+| `transports` | object | each capability's transports from the manifest, e.g. `{"robonix/service/navigation/navigate": ["mcp", "grpc"]}`; a capability that declares none is absent |
 | `deploy_dependencies` | object[] | robot deployment dependencies parsed from `robonix_manifest.yaml` |
 | `deployment_status` | string | robot dependency health: `ok` or `warning` |
 | `deployment_warnings` | object[] | robot manifest or dependency warnings with section, name, source, and reason |
@@ -147,7 +165,10 @@ detail = json.load(urllib.request.urlopen(f"{base}/package/{mapping['name']}.jso
 
 ## Package Manifest
 
-Each package repository must provide a root-level `package_manifest.yaml`.
+Each package must provide `package_manifest.yaml` at its catalog `path`, or at
+the repository root when `path` is omitted.
+Each capability in it names its transport (`transport: mcp`, `grpc` or `ros2`, or a list such as `[grpc, ros2]` when the package serves the contract over several), so readers know how to call it without running the package. A new or changed catalog entry whose capabilities do not all declare a valid transport is rejected; entries already listed are kept with a warning.
+
 The catalog builder reads these fields from that file:
 
 - `package.name`
@@ -205,6 +226,9 @@ resolved directory must exist and contain the selected package manifest
 accepted when no override is selected). `${ROBONIX_DEPLOY_DIR}` resolves
 to the robot repository root, while `${ROBONIX_SOURCE_PATH}` resolves to
 the default branch of `https://github.com/syswonder/robonix`.
+Dependencies with `${ROBONIX_SOURCE_PATH}/<dir>` link to the catalog package
+with that repository and `path: <dir>`. Dependencies with `url:` match only
+catalog packages at the repository root.
 
 ## Images
 
