@@ -106,9 +106,9 @@ packages:
     repo: https://github.com/1020559180/primitive-dji-msdk-flight-rbnx
   - name: robonix.service.fire_detect
     repo: https://github.com/1020559180/service-fire-detect-rbnx
-  - name: robonix.primitive.jaka.arm_gripper
+  - name: robonix.primitive.jaka.mini.arm_gripper
     repo: https://github.com/syswonder/primitive-jaka-mini_with_tg9801_gripper-arm_gripper-rbnx
-  - name: robonix.primitive.jaka.arm_hand
+  - name: robonix.primitive.jaka.mini.arm_hand
     repo: https://github.com/syswonder/primitive-jaka-mini_with_linker_hand_o6-arm_hand-rbnx
   - name: robonix.skill.jaka_grasp
     repo: https://github.com/syswonder/skill-jaka-grasp-rbnx
